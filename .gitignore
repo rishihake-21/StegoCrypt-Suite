@@ -1,0 +1,15 @@
+# Ignore video outputs
+*.avi
+*.mp4
+*.mkv
+*.mov
+*.flv
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore output folder
+out/
