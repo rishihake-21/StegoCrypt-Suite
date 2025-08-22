@@ -1,6 +1,5 @@
 # Ignore video outputs
 *.avi
-*.mp4
 *.mkv
 *.mov
 *.flv

@@ -1,0 +1,20 @@
+# StegoCrypt Suite - Core Dependencies (Actually Used)
+# Core cryptographic libraries
+pycryptodome>=3.15.0
+
+# Image processing
+Pillow>=9.0.0
+
+# Video processing
+opencv-python>=4.5.0
+
+# Audio processing
+pydub>=0.25.1
+
+# Numerical computing (used in video steganography)
+numpy>=1.21.0
+
+# Optional: Development and testing tools
+# Uncomment if you want to run tests
+pytest>=6.2.5
+pytest-cov>=2.12.0
