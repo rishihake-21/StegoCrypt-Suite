@@ -7,6 +7,12 @@ Direct process communication interface for Flutter frontend
 import os
 import sys
 import json
+
+# Set stdout and stderr to utf-8
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8')
 import argparse
 import tempfile
 import base64
@@ -29,78 +35,85 @@ from steganography.text_stego import (
     encode_text_data,
     decode_text_data,
 )
-from steganography.hashing import hash_message, verify_hash, get_supported_algorithms
-from steganography.logs import log_operation, get_logs
+from hashing import hash_message, verify_hash, get_supported_algorithms
+from logs import log_operation, get_logs, get_log_stats
 from cryptography.aes_crypto import encrypt_aes, decrypt_aes, get_key_from_password
 from Crypto.Protocol.KDF import PBKDF2
-from cryptography.rsa_crypto import encrypt_rsa, decrypt_rsa, load_keys, generate_and_save_keys
+from cryptography.rsa_crypto import (
+    generate_rsa_keys,
+    encrypt_with_rsa,
+    decrypt_with_rsa,
+    import_keys,
+    export_keys,
+    load_keys,
+)
 from validation.inputs import non_empty_string
 from validation.errors import ValidationError
 
-def encrypt_message(message: str, password: str, method: str) -> str:
+def encrypt_message(message: str, method: str, password: Optional[str] = None) -> str:
     """Encrypt message using specified method"""
     try:
         non_empty_string(message, "message")
-        non_empty_string(password, "password")
         non_empty_string(method, "method")
-        
+
         if method.upper() == "AES":
-            # Derive key and include salt with ciphertext so we can decrypt later
+            if not password:
+                raise ValueError("Password is required for AES encryption")
             key, salt = get_key_from_password(password)
             encrypted_data = encrypt_aes(key, message)
-            payload = salt + encrypted_data  # [16B salt][16B nonce][16B tag][cipher]
+            payload = salt + encrypted_data
+            # return encrypted_data
             return base64.b64encode(payload).decode('utf-8')
-        
+
         elif method.upper() == "RSA":
-            private_key, public_key = load_keys(password)
-            if private_key is None or public_key is None:
-                generate_and_save_keys(password)
-                private_key, public_key = load_keys(password)
+            _, public_key = load_keys()
+            if not public_key:
+                generate_rsa_keys()
+                _, public_key = load_keys()
             
-            encrypted_data = encrypt_rsa(public_key, message)
+            encrypted_data = encrypt_with_rsa(public_key, message)
             return base64.b64encode(encrypted_data).decode('utf-8')
-        
+
         else:
             raise ValueError(f"Unsupported encryption method: {method}")
-            
+
     except Exception as e:
         raise Exception(f"Encryption failed: {str(e)}")
 
-def decrypt_message(ciphertext: str, password: str, method: str) -> str:
+
+def decrypt_message(ciphertext: str, method: str, password: Optional[str] = None) -> str:
     """Decrypt message using specified method"""
     try:
         non_empty_string(ciphertext, "ciphertext")
-        non_empty_string(password, "password")
         non_empty_string(method, "method")
         
         encrypted_data = base64.b64decode(ciphertext)
-        
+
         if method.upper() == "AES":
-            # Prefer new format: [16B salt][nonce][tag][cipher]
+            if not password:
+                raise ValueError("Password is required for AES decryption")
             try:
-                if len(encrypted_data) >= 48:  # salt(16)+nonce(16)+tag(16)
+                if len(encrypted_data) >= 48:
                     salt = encrypted_data[:16]
                     body = encrypted_data[16:]
                     key = PBKDF2(password.encode(), salt, dkLen=16, count=100000)
                     return decrypt_aes(key, body)
                 else:
-                    # Fallback for older images (no salt prefix)
-                    key, _salt_unused = get_key_from_password(password)
+                    key, _ = get_key_from_password(password)
                     return decrypt_aes(key, encrypted_data)
             except Exception:
-                # Final fallback attempt without salt
                 key, _ = get_key_from_password(password)
                 return decrypt_aes(key, encrypted_data)
-        
+
         elif method.upper() == "RSA":
-            private_key, public_key = load_keys(password)
-            if private_key is None:
-                raise ValueError("RSA keys not found")
-            return decrypt_rsa(private_key, encrypted_data)
-        
+            private_key, _ = load_keys()
+            if not private_key:
+                raise ValueError("RSA private key not found. Cannot decrypt.")
+            return decrypt_with_rsa(private_key, encrypted_data)
+
         else:
             raise ValueError(f"Unsupported decryption method: {method}")
-            
+
     except Exception as e:
         raise Exception(f"Decryption failed: {str(e)}")
 
@@ -110,7 +123,8 @@ def process_image_encode(args):
         log_operation("ENCODE_IMAGE", "STARTED", {"filename": os.path.basename(args.input_file)})
         
         # Encrypt the message first
-        encrypted_message = encrypt_message(args.message, args.password, args.algorithm)
+        password = args.password if hasattr(args, 'password') else None
+        encrypted_message = encrypt_message(args.message, args.algorithm, password)
         
         # Encode the encrypted message into the image and get the bytes
         encoded_image_bytes = encode_image(args.input_file, encrypted_message)
@@ -118,17 +132,24 @@ def process_image_encode(args):
         # Base64 encode the bytes to send as a string in JSON
         encoded_image_base64 = base64.b64encode(encoded_image_bytes).decode('utf-8')
         
-        log_operation("ENCODE_IMAGE", "SUCCESS", {"filename": os.path.basename(args.output_file)})
+        output_filename = args.output_file
+        if not output_filename.lower().endswith('.png'):
+            output_filename += '.png'
+
+        log_operation("ENCODE_IMAGE", "SUCCESS", {"filename": os.path.basename(output_filename)})
         return {
             "status": "success",
             "success": True,
             "message": "Message successfully encoded into image",
             "image_data": encoded_image_base64,
-            "filename": os.path.basename(args.output_file),
+            "filename": os.path.basename(output_filename),
         }
         
     except Exception as e:
-        log_operation("ENCODE_IMAGE", "FAILED", {"error": str(e)})
+        details = {"error": str(e)}
+        if hasattr(args, 'input_file') and args.input_file:
+            details["filename"] = os.path.basename(args.input_file)
+        log_operation("ENCODE_IMAGE", "FAILED", details)
         return {"status": "error", "success": False, "message": str(e)}
 
 def process_image_decode(args):
@@ -140,11 +161,19 @@ def process_image_decode(args):
         decoded_text = decode_image(args.input_file)
         
         if decoded_text is None:
-            log_operation("DECODE_IMAGE", "FAILED", {"reason": "No hidden message found"})
+            log_operation(
+                "DECODE_IMAGE",
+                "FAILED",
+                {
+                    "reason": "No hidden message found",
+                    "filename": os.path.basename(args.input_file),
+                },
+            )
             return {"status": "error", "success": False, "message": "No hidden message found in image"}
         
         # Decrypt the message
-        decrypted_message = decrypt_message(decoded_text, args.password, args.algorithm)
+        password = args.password if hasattr(args, 'password') else None
+        decrypted_message = decrypt_message(decoded_text, args.algorithm, password)
         
         log_operation("DECODE_IMAGE", "SUCCESS", {"filename": os.path.basename(args.input_file)})
         return {
@@ -155,7 +184,10 @@ def process_image_decode(args):
         }
         
     except Exception as e:
-        log_operation("DECODE_IMAGE", "FAILED", {"error": str(e)})
+        details = {"error": str(e)}
+        if hasattr(args, 'input_file') and args.input_file:
+            details["filename"] = os.path.basename(args.input_file)
+        log_operation("DECODE_IMAGE", "FAILED", details)
         return {"status": "error", "success": False, "message": str(e)}
 
 def process_audio_encode(args):
@@ -163,7 +195,8 @@ def process_audio_encode(args):
     try:
         log_operation("ENCODE_AUDIO", "STARTED", {"filename": os.path.basename(args.input_file)})
         
-        encrypted_message = encrypt_message(args.message, args.password, args.algorithm)
+        password = args.password if hasattr(args, 'password') else None
+        encrypted_message = encrypt_message(args.message, args.algorithm, password)
         
         encoded_audio_bytes = encode_audio(args.input_file, encrypted_message)
         
@@ -179,7 +212,10 @@ def process_audio_encode(args):
         }
         
     except Exception as e:
-        log_operation("ENCODE_AUDIO", "FAILED", {"error": str(e)})
+        details = {"error": str(e)}
+        if hasattr(args, 'input_file') and args.input_file:
+            details["filename"] = os.path.basename(args.input_file)
+        log_operation("ENCODE_AUDIO", "FAILED", details)
         return {"status": "error", "success": False, "message": str(e)}
 
 def process_audio_decode(args):
@@ -190,10 +226,18 @@ def process_audio_decode(args):
         decoded_text = decode_audio(args.input_file)
         
         if decoded_text is None:
-            log_operation("DECODE_AUDIO", "FAILED", {"reason": "No hidden message found"})
+            log_operation(
+                "DECODE_AUDIO",
+                "FAILED",
+                {
+                    "reason": "No hidden message found",
+                    "filename": os.path.basename(args.input_file),
+                },
+            )
             return {"status": "error", "success": False, "message": "No hidden message found in audio"}
         
-        decrypted_message = decrypt_message(decoded_text, args.password, args.algorithm)
+        password = args.password if hasattr(args, 'password') else None
+        decrypted_message = decrypt_message(decoded_text, args.algorithm, password)
         
         log_operation("DECODE_AUDIO", "SUCCESS", {"filename": os.path.basename(args.input_file)})
         return {
@@ -204,7 +248,10 @@ def process_audio_decode(args):
         }
         
     except Exception as e:
-        log_operation("DECODE_AUDIO", "FAILED", {"error": str(e)})
+        details = {"error": str(e)}
+        if hasattr(args, 'input_file') and args.input_file:
+            details["filename"] = os.path.basename(args.input_file)
+        log_operation("DECODE_AUDIO", "FAILED", details)
         return {"status": "error", "success": False, "message": str(e)}
 
 def process_video_encode(args):
@@ -213,7 +260,8 @@ def process_video_encode(args):
         log_operation("ENCODE_VIDEO", "STARTED", {"filename": os.path.basename(args.input_file)})
         
         # Encrypt the message first
-        encrypted_message = encrypt_message(args.message, args.password, args.algorithm)
+        password = args.password if hasattr(args, 'password') else None
+        encrypted_message = encrypt_message(args.message, args.algorithm, password)
         
         # Encode the encrypted message into the video and get the bytes
         encoded_video_bytes = encode_video(args.input_file, encrypted_message)
@@ -231,7 +279,10 @@ def process_video_encode(args):
         }
         
     except Exception as e:
-        log_operation("ENCODE_VIDEO", "FAILED", {"error": str(e)})
+        details = {"error": str(e)}
+        if hasattr(args, 'input_file') and args.input_file:
+            details["filename"] = os.path.basename(args.input_file)
+        log_operation("ENCODE_VIDEO", "FAILED", details)
         return {"status": "error", "success": False, "message": str(e)}
 
 def process_video_decode(args):
@@ -246,11 +297,19 @@ def process_video_decode(args):
         decoded_text = decode_video(video_bytes)
         
         if decoded_text is None:
-            log_operation("DECODE_VIDEO", "FAILED", {"reason": "No hidden message found"})
+            log_operation(
+                "DECODE_VIDEO",
+                "FAILED",
+                {
+                    "reason": "No hidden message found",
+                    "filename": os.path.basename(args.input_file),
+                },
+            )
             return {"status": "error", "success": False, "message": "No hidden message found in video"}
         
         # Decrypt the message
-        decrypted_message = decrypt_message(decoded_text, args.password, args.algorithm)
+        password = args.password if hasattr(args, 'password') else None
+        decrypted_message = decrypt_message(decoded_text, args.algorithm, password)
         
         log_operation("DECODE_VIDEO", "SUCCESS", {"filename": os.path.basename(args.input_file)})
         return {
@@ -261,7 +320,10 @@ def process_video_decode(args):
         }
         
     except Exception as e:
-        log_operation("DECODE_VIDEO", "FAILED", {"error": str(e)})
+        details = {"error": str(e)}
+        if hasattr(args, 'input_file') and args.input_file:
+            details["filename"] = os.path.basename(args.input_file)
+        log_operation("DECODE_VIDEO", "FAILED", details)
         return {"status": "error", "success": False, "message": str(e)}
 
 def process_text_encode(args):
@@ -269,7 +331,8 @@ def process_text_encode(args):
     try:
         log_operation("ENCODE_TEXT", "STARTED", {"filename": os.path.basename(args.input_file)})
 
-        encrypted_message = encrypt_message(args.message, args.password, args.algorithm)
+        password = args.password if hasattr(args, 'password') else None
+        encrypted_message = encrypt_message(args.message, args.algorithm, password)
 
         with open(args.input_file, 'r', encoding='utf-8') as f:
             cover_text = f.read()
@@ -288,7 +351,10 @@ def process_text_encode(args):
         }
 
     except Exception as e:
-        log_operation("ENCODE_TEXT", "FAILED", {"error": str(e)})
+        details = {"error": str(e)}
+        if hasattr(args, 'input_file') and args.input_file:
+            details["filename"] = os.path.basename(args.input_file)
+        log_operation("ENCODE_TEXT", "FAILED", details)
         return {"status": "error", "success": False, "message": str(e)}
 
 def process_text_decode(args):
@@ -301,10 +367,18 @@ def process_text_decode(args):
 
         decoded_text = decode_text_data(stego_text)
         if not decoded_text:
-            log_operation("DECODE_TEXT", "FAILED", {"reason": "No hidden message found"})
+            log_operation(
+                "DECODE_TEXT",
+                "FAILED",
+                {
+                    "reason": "No hidden message found",
+                    "filename": os.path.basename(args.input_file),
+                },
+            )
             return {"status": "error", "success": False, "message": "No hidden message found in text"}
 
-        decrypted_message = decrypt_message(decoded_text, args.password, args.algorithm)
+        password = args.password if hasattr(args, 'password') else None
+        decrypted_message = decrypt_message(decoded_text, args.algorithm, password)
 
         log_operation("DECODE_TEXT", "SUCCESS", {"filename": os.path.basename(args.input_file)})
         return {
@@ -315,14 +389,18 @@ def process_text_decode(args):
         }
 
     except Exception as e:
-        log_operation("DECODE_TEXT", "FAILED", {"error": str(e)})
+        details = {"error": str(e)}
+        if hasattr(args, 'input_file') and args.input_file:
+            details["filename"] = os.path.basename(args.input_file)
+        log_operation("DECODE_TEXT", "FAILED", details)
         return {"status": "error", "success": False, "message": str(e)}
 
 def process_encrypt(args):
     """Process encryption request"""
     try:
         log_operation("ENCRYPT", "STARTED", {"method": args.method})
-        ciphertext = encrypt_message(args.message, args.password, args.method)
+        password = args.password if hasattr(args, 'password') else None
+        ciphertext = encrypt_message(args.message, args.method, password)
         log_operation("ENCRYPT", "SUCCESS", {"method": args.method})
         return {"status": "success", "ciphertext": ciphertext}
     except Exception as e:
@@ -333,7 +411,8 @@ def process_decrypt(args):
     """Process decryption request"""
     try:
         log_operation("DECRYPT", "STARTED", {"method": args.method})
-        message = decrypt_message(args.ciphertext, args.password, args.method)
+        password = args.password if hasattr(args, 'password') else None
+        message = decrypt_message(args.ciphertext, args.method, password)
         log_operation("DECRYPT", "SUCCESS", {"method": args.method})
         return {"status": "success", "message": message}
     except Exception as e:
@@ -373,8 +452,48 @@ def process_algorithms(args):
 def process_get_logs(args):
     """Process get logs request"""
     try:
-        logs = get_logs(count=15)
+        logs = get_logs()
         return {"status": "success", "logs": logs}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def process_get_log_stats(args):
+    """Process get log stats request"""
+    try:
+        stats = get_log_stats()
+        return {"status": "success", "stats": stats}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+def process_rsa_command(args):
+    """Process RSA-related commands"""
+    try:
+        if args.rsa_command == "generate-keys":
+            output_dir = args.output_dir if hasattr(args, 'output_dir') else None
+            private_key_path, public_key_path = generate_rsa_keys(output_dir)
+            return {
+                "status": "success",
+                "message": f"RSA keys generated and saved to {private_key_path.parent}",
+            }
+        elif args.rsa_command == "import-keys":
+            import_keys(args.pub_file, args.priv_file)
+            return {"status": "success", "message": "RSA keys imported successfully"}
+        elif args.rsa_command == "export-keys":
+            export_keys(args.output_dir)
+            return {
+                "status": "success",
+                "message": f"RSA keys exported to {args.output_dir}",
+            }
+        elif args.rsa_command == "encrypt":
+            _, public_key = load_keys()
+            encrypted = encrypt_with_rsa(public_key, args.message)
+            return {"status": "success", "ciphertext": base64.b64encode(encrypted).decode('utf-8')}
+        elif args.rsa_command == "decrypt":
+            private_key, _ = load_keys()
+            decrypted = decrypt_with_rsa(private_key, base64.b64decode(args.ciphertext))
+            return {"status": "success", "message": decrypted}
+        else:
+            return {"status": "error", "message": f"Unknown RSA command: {args.rsa_command}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -385,64 +504,64 @@ def main():
     # Image steganography
     img_encode_parser = subparsers.add_parser('encode-image')
     img_encode_parser.add_argument('--message', required=True)
-    img_encode_parser.add_argument('--password', required=True)
+    img_encode_parser.add_argument('--password', required=False)
     img_encode_parser.add_argument('--algorithm', required=True)
     img_encode_parser.add_argument('--input-file', required=True)
     img_encode_parser.add_argument('--output-file', required=True)
     
     img_decode_parser = subparsers.add_parser('decode-image')
-    img_decode_parser.add_argument('--password', required=True)
+    img_decode_parser.add_argument('--password', required=False)
     img_decode_parser.add_argument('--algorithm', required=True)
     img_decode_parser.add_argument('--input-file', required=True)
     
     # Audio steganography
     aud_encode_parser = subparsers.add_parser('encode-audio')
     aud_encode_parser.add_argument('--message', required=True)
-    aud_encode_parser.add_argument('--password', required=True)
+    aud_encode_parser.add_argument('--password', required=False)
     aud_encode_parser.add_argument('--algorithm', required=True)
     aud_encode_parser.add_argument('--input-file', required=True)
     aud_encode_parser.add_argument('--output-file', required=True)
     
     aud_decode_parser = subparsers.add_parser('decode-audio')
-    aud_decode_parser.add_argument('--password', required=True)
+    aud_decode_parser.add_argument('--password', required=False)
     aud_decode_parser.add_argument('--algorithm', required=True)
     aud_decode_parser.add_argument('--input-file', required=True)
     
     # Video steganography
     vid_encode_parser = subparsers.add_parser('encode-video')
     vid_encode_parser.add_argument('--message', required=True)
-    vid_encode_parser.add_argument('--password', required=True)
+    vid_encode_parser.add_argument('--password', required=False)
     vid_encode_parser.add_argument('--algorithm', required=True)
     vid_encode_parser.add_argument('--input-file', required=True)
     vid_encode_parser.add_argument('--output-file', required=True)
     
     vid_decode_parser = subparsers.add_parser('decode-video')
-    vid_decode_parser.add_argument('--password', required=True)
+    vid_decode_parser.add_argument('--password', required=False)
     vid_decode_parser.add_argument('--algorithm', required=True)
     vid_decode_parser.add_argument('--input-file', required=True)
     
     # Text steganography
     txt_encode_parser = subparsers.add_parser('encode-text')
     txt_encode_parser.add_argument('--message', required=True)
-    txt_encode_parser.add_argument('--password', required=True)
+    txt_encode_parser.add_argument('--password', required=False)
     txt_encode_parser.add_argument('--algorithm', required=True)
     txt_encode_parser.add_argument('--input-file', required=True)
     txt_encode_parser.add_argument('--output-file', required=True)
     
     txt_decode_parser = subparsers.add_parser('decode-text')
-    txt_decode_parser.add_argument('--password', required=True)
+    txt_decode_parser.add_argument('--password', required=False)
     txt_decode_parser.add_argument('--algorithm', required=True)
     txt_decode_parser.add_argument('--input-file', required=True)
     
     # Encryption/Decryption
     encrypt_parser = subparsers.add_parser('encrypt')
     encrypt_parser.add_argument('--message', required=True)
-    encrypt_parser.add_argument('--password', required=True)
+    encrypt_parser.add_argument('--password', required=False)
     encrypt_parser.add_argument('--method', required=True)
     
     decrypt_parser = subparsers.add_parser('decrypt')
     decrypt_parser.add_argument('--ciphertext', required=True)
-    decrypt_parser.add_argument('--password', required=True)
+    decrypt_parser.add_argument('--password', required=False)
     decrypt_parser.add_argument('--method', required=True)
     
     # Hashing
@@ -460,6 +579,27 @@ def main():
 
     # Logs
     logs_parser = subparsers.add_parser('get-logs')
+    log_stats_parser = subparsers.add_parser('get-log-stats')
+
+    # RSA commands
+    rsa_parser = subparsers.add_parser('rsa', help='RSA key management')
+    rsa_subparsers = rsa_parser.add_subparsers(dest='rsa_command', help='RSA commands')
+
+    rsa_generate_parser = rsa_subparsers.add_parser('generate-keys', help='Generate RSA key pair')
+    rsa_generate_parser.add_argument('--output-dir', required=False, help='Directory to save the generated keys')
+    
+    rsa_import_parser = rsa_subparsers.add_parser('import-keys', help='Import RSA key pair')
+    rsa_import_parser.add_argument('--pub-file', required=True, help='Path to public key file')
+    rsa_import_parser.add_argument('--priv-file', required=True, help='Path to private key file')
+
+    rsa_export_parser = rsa_subparsers.add_parser('export-keys', help='Export RSA key pair')
+    rsa_export_parser.add_argument('--output-dir', required=True, help='Directory to save keys')
+
+    rsa_encrypt_parser = rsa_subparsers.add_parser('encrypt', help='Encrypt a message with RSA')
+    rsa_encrypt_parser.add_argument('--message', required=True, help='Message to encrypt')
+
+    rsa_decrypt_parser = rsa_subparsers.add_parser('decrypt', help='Decrypt a message with RSA')
+    rsa_decrypt_parser.add_argument('--ciphertext', required=True, help='Ciphertext to decrypt')
     
     args = parser.parse_args()
     
@@ -497,6 +637,10 @@ def main():
             result = process_algorithms(args)
         elif args.command == 'get-logs':
             result = process_get_logs(args)
+        elif args.command == 'get-log-stats':
+            result = process_get_log_stats(args)
+        elif args.command == 'rsa':
+            result = process_rsa_command(args)
         else:
             result = {"status": "error", "message": f"Unknown command: {args.command}"}
         

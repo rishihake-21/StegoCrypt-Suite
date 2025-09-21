@@ -13,13 +13,13 @@ class AboutPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('About StegoCrypt Suit', style: CyberTheme.heading1),
+          Text('About StegoCrypt Suite', style: CyberTheme.heading1),
           const SizedBox(height: 8),
           Text(
             'Advanced toolkit for steganography and cryptography operations',
             style: CyberTheme.bodyLarge.copyWith(color: CyberTheme.softGray),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           Expanded(
             child: SingleChildScrollView(
               child: Column(
@@ -28,32 +28,32 @@ class AboutPage extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     decoration: CyberTheme.glassContainer,
-                    padding: const EdgeInsets.all(32),
+                    padding: const EdgeInsets.all(24),
                     child: Column(
                       children: [
                         Container(
-                          width: 80,
-                          height: 80,
+                          width: 60,
+                          height: 60,
                           decoration: CyberTheme.glowingContainer,
                           child: const Icon(
                             Icons.security,
-                            size: 40,
+                            size: 32,
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
                         Text(
-                          'StegoCrypt Suit v1.0.0',
+                          'StegoCrypt Suite v1.0.0',
                           style: CyberTheme.heading2,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 8),
                         Text(
                           'A comprehensive desktop application for secure data operations '
                           'including steganography, cryptography, and digital forensics.',
                           style: CyberTheme.bodyMedium,
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -76,14 +76,14 @@ class AboutPage extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
 
                   // Features Grid
                   GridView.count(
                     shrinkWrap: true,
                     crossAxisCount: 3,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
                     children: [
                       _buildFeatureCard(
                         'Image Steganography',
@@ -110,9 +110,9 @@ class AboutPage extends StatelessWidget {
                         Colors.green,
                       ),
                       _buildFeatureCard(
-                        'Stego Detection',
-                        Icons.search_outlined,
-                        'Analyze files for hidden content (Coming Soon)',
+                        'Hashing',
+                        Icons.fingerprint,
+                        'Generate hashes of text using SHA-256, SHA-512, and MD5',
                         Colors.orange,
                       ),
                       _buildFeatureCard(
@@ -124,7 +124,7 @@ class AboutPage extends StatelessWidget {
                     ],
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
 
                   // System Info
                   Container(
@@ -152,7 +152,39 @@ class AboutPage extends StatelessWidget {
                     ),
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
+
+                  // How it works
+                  Container(
+                    width: double.infinity,
+                    decoration: CyberTheme.glassContainer,
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('How It Works', style: CyberTheme.heading2),
+                        const SizedBox(height: 24),
+                        _buildSystemInfoItem(
+                          'Image Steganography',
+                          'Hides data within the least significant bits (LSB) of image pixels, making it visually undetectable.',
+                        ),
+                        _buildSystemInfoItem(
+                          'Audio Steganography',
+                          'Embeds secret messages in audio files by altering the LSB of audio samples. (Coming Soon)',
+                        ),
+                        _buildSystemInfoItem(
+                          'Video Steganography',
+                          'Conceals information within the frames of a video file, using LSB insertion on pixel data. (Coming Soon)',
+                        ),
+                        _buildSystemInfoItem(
+                          'File Encryption',
+                          'Secures files using the Advanced Encryption Standard (AES-256), a symmetric encryption algorithm.',
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
 
                   // License Info
                   Container(

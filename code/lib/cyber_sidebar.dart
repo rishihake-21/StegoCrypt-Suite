@@ -78,11 +78,19 @@ class _CyberSidebarState extends State<CyberSidebar>
           Container(
             width: 48,
             height: 48,
-            decoration: CyberTheme.glowingContainer,
-            child: const Center(
-              child: Icon(Icons.security, color: Colors.white, size: 24),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
             ),
-          ),
+
+            child: Center(
+                child: ClipOval(
+                  child: Image.asset("assets/logo/sc2.jpg",
+                    fit: BoxFit.cover,
+                    width: 100,
+                    height: 100,),
+                )
+              ),
+            ),
           const SizedBox(width: 16),
           const Expanded(
             child: Column(
@@ -91,15 +99,15 @@ class _CyberSidebarState extends State<CyberSidebar>
                 Text(
                   'StegoCrypt',
                   style: TextStyle(
-                    fontSize: 18,
+                    fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),
                 ),
                 Text(
-                  'Suit',
+                  'Suite',
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w400,
                     color: CyberTheme.aquaBlue,
                   ),
@@ -122,7 +130,7 @@ class _CyberSidebarState extends State<CyberSidebar>
                   'Dashboard',
                   'dashboard',
                   [
-                    NavItem('home', 'Home', Icons.dashboard_outlined, false),
+                    NavItem('/', 'Home', Icons.dashboard_outlined, false),
                   ],
                   appProvider),
               _buildNavGroup(
@@ -130,26 +138,26 @@ class _CyberSidebarState extends State<CyberSidebar>
                   'steganography',
                   [
                     NavItem(
-                      'image-stego',
-                      'Image Stego',
+                      '/image-steganography',
+                      'Image Steganography',
                       Icons.image_outlined,
                       false,
                     ),
                     NavItem(
-                      'audio-stego',
-                      'Audio Stego',
+                      '/audio-steganography',
+                      'Audio Steganography',
                       Icons.audiotrack_outlined,
                       false,
                     ),
                     NavItem(
-                      'video-stego',
-                      'Video Stego',
+                      '/video-steganography',
+                      'Video Steganography',
                       Icons.videocam_outlined,
                       false,
                     ),
                     NavItem(
-                      'text-stego',
-                      'Text Stego',
+                      '/text-steganography',
+                      'Text Steganography',
                       Icons.text_fields_outlined,
                       false,
                     ),
@@ -159,19 +167,19 @@ class _CyberSidebarState extends State<CyberSidebar>
                   'Cryptography',
                   'cryptography',
                   [
-                    NavItem('encrypt', 'Encrypt', Icons.lock_outlined, false),
+                    NavItem('/encrypt', 'Encrypt', Icons.lock_outlined, false),
                     NavItem(
-                        'decrypt', 'Decrypt', Icons.lock_open_outlined, false),
+                        '/decrypt', 'Decrypt', Icons.lock_open_outlined, false),
                   ],
                   appProvider),
               _buildNavGroup(
-                  'Analysis',
-                  'analysis',
+                  'Hashing',
+                  'hashing',
                   [
                     NavItem(
-                      'detector',
-                      'Stego Detector',
-                      Icons.search_outlined,
+                      '/hashing',
+                      'Hashing',
+                      Icons.fingerprint,
                       false,
                     ),
                   ],
@@ -180,7 +188,7 @@ class _CyberSidebarState extends State<CyberSidebar>
                   'Information',
                   'information',
                   [
-                    NavItem('about', 'About', Icons.info_outlined, false),
+                    NavItem('/about', 'About', Icons.info_outlined, false),
                   ],
                   appProvider),
             ],

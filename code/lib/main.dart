@@ -1,7 +1,9 @@
 // main_dart.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
+import 'auth_page.dart';
 import 'cyber_theme.dart';
 import 'app_routes.dart';
 import 'app_provider.dart';
@@ -40,11 +42,16 @@ void main() async {
     });
   }
 
-  runApp(const StegoCryptApp());
+  final prefs = await SharedPreferences.getInstance();
+  final isPasswordSet = prefs.containsKey('password');
+
+  runApp(StegoCryptApp(isPasswordSet: isPasswordSet));
 }
 
 class StegoCryptApp extends StatelessWidget {
-  const StegoCryptApp({super.key});
+  final bool isPasswordSet;
+
+  const StegoCryptApp({super.key, required this.isPasswordSet});
 
   @override
   Widget build(BuildContext context) {
@@ -54,12 +61,12 @@ class StegoCryptApp extends StatelessWidget {
 
         builder: (context, appProvider, _) {
           return MaterialApp(
-            title: 'StegoCrypt Suit',
+            title: 'StegoCrypt Suite',
             theme: CyberTheme.lightTheme,
             darkTheme: CyberTheme.darkTheme,
             themeMode: appProvider.themeMode,
             debugShowCheckedModeBanner: false,
-            home: const MainLayout(),
+            home: isPasswordSet ? const AuthPage() : const AuthPage(),
             onGenerateRoute: AppRoutes.generateRoute,
           );
         },
@@ -67,5 +74,3 @@ class StegoCryptApp extends StatelessWidget {
     );
   }
 }
-
-

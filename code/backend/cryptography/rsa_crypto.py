@@ -1,5 +1,8 @@
-import os, sys
+import os
+import sys
+import shutil
 from pathlib import Path
+from typing import Optional
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 
@@ -17,90 +20,87 @@ KEY_DIR.mkdir(exist_ok=True)
 PRIVATE_KEY_FILE = KEY_DIR / "private_rsa.pem"
 PUBLIC_KEY_FILE = KEY_DIR / "public_rsa.pem"
 
-def generate_and_save_keys(password=None):
+def generate_rsa_keys(output_dir: Optional[str] = None):
+    """
+    Generates a new RSA key pair.
+    If output_dir is provided, saves keys to that directory.
+    Otherwise, saves to the default location.
+    """
     key = RSA.generate(2048)
-    private_key = key.export_key(passphrase=password, pkcs=8,protection="scryptAndAES128-CBC" if password else None)
-    with open(PRIVATE_KEY_FILE, 'wb') as f:
-        f.write(private_key)
+    private_key_pem = key.export_key()
+    public_key_pem = key.publickey().export_key()
 
-    public_key = key.publickey().export_key()
-    with open(PUBLIC_KEY_FILE, 'wb') as f:
-        f.write(public_key)
-    print("New RSA key pair generated and saved.")
+    if output_dir:
+        dest_dir = Path(output_dir)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        private_key_path = dest_dir / "private_rsa.pem"
+        public_key_path = dest_dir / "public_rsa.pem"
+    else:
+        private_key_path = PRIVATE_KEY_FILE
+        public_key_path = PUBLIC_KEY_FILE
 
-def load_keys(password=None):
+    with open(private_key_path, 'wb') as f:
+        f.write(private_key_pem)
+    with open(public_key_path, 'wb') as f:
+        f.write(public_key_pem)
+
+    # Also update the default key location if a custom directory is used
+    if output_dir:
+        with open(PRIVATE_KEY_FILE, 'wb') as f:
+            f.write(private_key_pem)
+        with open(PUBLIC_KEY_FILE, 'wb') as f:
+            f.write(public_key_pem)
+            
+    return private_key_path, public_key_path
+
+def load_keys():
+    """Loads RSA keys from the default location, generating them if they don't exist."""
     try:
-        if not os.path.exists(PRIVATE_KEY_FILE) or not os.path.exists(PUBLIC_KEY_FILE):
-            print("No existing key pair found. Generating new...")
-            generate_and_save_keys(password)
+        if not PRIVATE_KEY_FILE.exists() or not PUBLIC_KEY_FILE.exists():
+            generate_rsa_keys()
         
         with open(PRIVATE_KEY_FILE, 'rb') as f:
-            private_key = RSA.import_key(f.read(), passphrase=password)
+            private_key = RSA.import_key(f.read())
         with open(PUBLIC_KEY_FILE, 'rb') as f:
             public_key = RSA.import_key(f.read())
         return private_key, public_key
     except Exception as e:
-        print(f"❌ Error loading keys: {e}")
-        print("This might be due to wrong password or corrupted key files.")
-        return None, None
+        raise e
 
-def encrypt_rsa(public_key, plaintext):
-    """Encrypt plaintext and return raw bytes"""
+def encrypt_with_rsa(public_key, message: str) -> bytes:
+    """Encrypt plaintext string using the public key and return raw bytes."""
+    non_empty_string(message, "message")
     cipher = PKCS1_OAEP.new(public_key)
-    ciphertext = cipher.encrypt(plaintext.encode())
+    ciphertext = cipher.encrypt(message.encode('utf-8'))
     return ciphertext
 
-def decrypt_rsa(private_key, ciphertext):
-    """Decrypt ciphertext bytes and return plaintext string"""
+def decrypt_with_rsa(private_key, ciphertext: bytes) -> str:
+    """Decrypt ciphertext bytes using the private key and return plaintext string."""
     cipher = PKCS1_OAEP.new(private_key)
-    return cipher.decrypt(ciphertext).decode()
+    return cipher.decrypt(ciphertext).decode('utf-8')
 
-def main():
-    try:
-        password = input("Enter password for RSA private key: ").strip()
-        if password == "":
-            password = None
+def import_keys(pub_file: str, priv_file: str):
+    """Imports RSA keys from the specified files."""
+    pub_path = Path(pub_file).resolve()
+    priv_path = Path(priv_file).resolve()
 
-        private_key, public_key = load_keys(password)
-        
-        if private_key is None or public_key is None:
-            print("❌ Failed to load keys. Exiting.")
-            return
+    if not pub_path.exists() or not priv_path.exists():
+        raise FileNotFoundError("One or both key files not found.")
 
-        while True:
-            print("\n--- RSA MENU ---")
-            print("1. Encrypt Text")
-            print("2. Decrypt Text")
-            print("3. Exit")
-            choice = input("Enter choice: ")
+    # Avoid copying if the source and destination are the same file
+    if pub_path != PUBLIC_KEY_FILE.resolve():
+        shutil.copyfile(pub_path, PUBLIC_KEY_FILE)
+    
+    if priv_path != PRIVATE_KEY_FILE.resolve():
+        shutil.copyfile(priv_path, PRIVATE_KEY_FILE)
 
-            if choice == '1':
-                text = input("Enter text to encrypt: ").strip()
-                try:
-                    non_empty_string(text, "text")
-                    encrypted = encrypt_rsa(public_key, text)
-                    print("✅ Encrypted (raw bytes):", encrypted.hex())
-                    print("   Length:", len(encrypted), "bytes")
-                except Exception as e:
-                    print(f"❌ Encryption failed: {e}")
-            elif choice == '2':
-                encrypted_hex = input("Enter encrypted text (hex): ").strip()
-                try:
-                    encrypted = bytes.fromhex(encrypted_hex)
-                    decrypted = decrypt_rsa(private_key, encrypted)
-                    print("✅ Decrypted:", decrypted)
-                except Exception as e:
-                    print(f"❌ Decryption failed: {e}")
-                    print("This might be due to wrong password, corrupted data, or invalid input.")
-            elif choice == '3':
-                print("👋 Exiting.")
-                break
-            else:
-                print("❌ Invalid choice! Please enter 1, 2, or 3.")
-    except KeyboardInterrupt:
-        print("\n\n👋 Exiting.")
-    except Exception as e:
-        print(f"❌ Unexpected error: {e}")
+def export_keys(output_dir: str):
+    """Exports the current RSA keys to the specified directory."""
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
 
-if __name__ == "__main__":
-    main()
+    if not PRIVATE_KEY_FILE.exists() or not PUBLIC_KEY_FILE.exists():
+        raise FileNotFoundError("No keys found to export. Generate them first.")
+
+    shutil.copyfile(PRIVATE_KEY_FILE, output_path / "private_rsa.pem")
+    shutil.copyfile(PUBLIC_KEY_FILE, output_path / "public_rsa.pem")

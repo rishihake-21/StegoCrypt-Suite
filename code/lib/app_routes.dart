@@ -7,7 +7,7 @@ import 'video_stego_page.dart';
 import 'text_stego_page.dart';
 import 'encrypt_page.dart';
 import 'decrypt_page.dart';
-import 'detector_page.dart';
+import 'hashing_page.dart';
 import 'about_page.dart';
 
 class AppRoutes {
@@ -15,20 +15,20 @@ class AppRoutes {
     switch (settings.name) {
       case '/':
         return MaterialPageRoute(builder: (_) => const HomePage());
-      case '/image-stego':
+      case '/image-steganography':
         return MaterialPageRoute(builder: (_) => const ImageStegoPage());
-      case '/audio-stego':
+      case '/audio-steganography':
         return MaterialPageRoute(builder: (_) => const AudioStegoPage());
-      case '/video-stego':
+      case '/video-steganography':
         return MaterialPageRoute(builder: (_) => const VideoStegoPage());
-      case '/text-stego':
+      case '/text-steganography':
         return MaterialPageRoute(builder: (_) => const TextStegoPage());
       case '/encrypt':
         return MaterialPageRoute(builder: (_) => const EncryptPage());
       case '/decrypt':
         return MaterialPageRoute(builder: (_) => const DecryptPage());
-      case '/detector':
-        return MaterialPageRoute(builder: (_) => const DetectorPage());
+      case '/hashing':
+        return MaterialPageRoute(builder: (_) => const HashingPage());
       case '/about':
         return MaterialPageRoute(builder: (_) => const AboutPage());
       default:

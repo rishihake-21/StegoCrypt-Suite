@@ -42,6 +42,11 @@ class _ImageStegoPageState extends State<ImageStegoPage>
     'AES',
     'RSA',
   ];
+  bool _isGeneratingKeys = false;
+  bool _isImportingKeys = false;
+  bool _isExportingKeys = false;
+  String? _errorText;
+  String? _successText;
 
   @override
   void initState() {
@@ -75,15 +80,30 @@ class _ImageStegoPageState extends State<ImageStegoPage>
   Future<void> _showLongErrorDialog(String title, String message) async {
     // show a dialog for long or important error messages
     if (!mounted) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(title),
+        backgroundColor: isDark ? const Color(0xFF1E1E2A) : Colors.white,
+        title: Text(
+          title,
+          style: isDark
+              ? CyberTheme.heading2
+              : CyberTheme.heading2.copyWith(color: Colors.black87),
+        ),
         content: SingleChildScrollView(
-          child: SelectableText(message),
+          child: SelectableText(
+            message,
+            style: isDark
+                ? CyberTheme.bodyMedium
+                : CyberTheme.bodyMedium.copyWith(color: Colors.black87),
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
         ],
       ),
     );
@@ -123,6 +143,104 @@ class _ImageStegoPageState extends State<ImageStegoPage>
     }
   }
 
+  Future<void> _runRsaCommand(String command,
+      {List<String> args = const [], Function? onLoading}) async {
+    if (onLoading != null) onLoading(true);
+    setState(() {
+      _errorText = null;
+      _successText = null;
+    });
+
+    try {
+      final backendPath = await getBackendPath();
+      final pythonExec = Platform.isWindows ? 'python' : 'python3';
+      final result = await Process.run(pythonExec, [
+        backendPath,
+        'rsa',
+        command,
+        ...args,
+      ]);
+
+      if (!mounted) return;
+      if (result.exitCode == 0) {
+        final output = jsonDecode(result.stdout);
+        if (output['status'] == 'success') {
+          setState(() {
+            _successText = output['message'];
+          });
+          _showSnack(_successText!);
+        } else {
+          setState(() {
+            _errorText = output['message'] ?? 'An unknown error occurred.';
+          });
+          _showSnack(_errorText!, backgroundColor: Colors.red);
+        }
+      } else {
+        setState(() {
+          _errorText = result.stderr ?? 'An unknown error occurred.';
+        });
+        _showSnack(_errorText!, backgroundColor: Colors.red);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorText = 'An exception occurred: $e';
+      });
+      _showSnack(_errorText!, backgroundColor: Colors.red);
+    } finally {
+      if (!mounted) return;
+      if (onLoading != null) onLoading(false);
+    }
+  }
+
+  void _generateKeyPair() async {
+    String? outputDir = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select a directory to save the keys',
+    );
+
+    if (outputDir != null) {
+      _runRsaCommand('generate-keys',
+          args: ['--output-dir', outputDir],
+          onLoading: (val) => setState(() => _isGeneratingKeys = val));
+    } else {
+      // a default key generation if no directory is selected
+      _runRsaCommand('generate-keys',
+          onLoading: (val) => setState(() => _isGeneratingKeys = val));
+    }
+  }
+
+  void _importKeyPair() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: ['pem'],
+    );
+
+    if (result != null && result.files.length == 2) {
+      final pubFile = result.files.firstWhere((f) => f.name.contains('public'), orElse: () => result.files[0]);
+      final privFile = result.files.firstWhere((f) => f.name.contains('private'), orElse: () => result.files[1]);
+
+      _runRsaCommand('import-keys',
+          args: ['--pub-file', pubFile.path!, '--priv-file', privFile.path!],
+          onLoading: (val) => setState(() => _isImportingKeys = val));
+    } else {
+      setState(() {
+        _errorText = "Please select both a public and a private .pem file.";
+      });
+      _showSnack(_errorText!, backgroundColor: Colors.red);
+    }
+  }
+
+  void _exportKeyPair() async {
+    String? outputDir = await FilePicker.platform.getDirectoryPath();
+
+    if (outputDir != null) {
+      _runRsaCommand('export-keys',
+          args: ['--output-dir', outputDir],
+          onLoading: (val) => setState(() => _isExportingKeys = val));
+    }
+  }
+
   Future<void> _encodeMessage() async {
     if (_selectedImageFile == null || _messageController.text.isEmpty) {
       _showSnack('Please select an image and enter a message', backgroundColor: Colors.orange);
@@ -151,11 +269,14 @@ class _ImageStegoPageState extends State<ImageStegoPage>
         backendPath,
         'encode-image',
         '--message', _messageController.text,
-        '--password', _passwordController.text,
         '--algorithm', _selectedAlgorithm,
         '--input-file', inputPath,
         '--output-file', outputFilename,
       ];
+
+      if (_selectedAlgorithm == 'AES') {
+        args.addAll(['--password', _passwordController.text]);
+      }
 
       final pythonExec = Platform.isWindows ? 'python' : 'python3';
       appProvider.updateProgress(0.25);
@@ -204,15 +325,18 @@ class _ImageStegoPageState extends State<ImageStegoPage>
       _showSnack('Please select an image to decode', backgroundColor: Colors.orange);
       return;
     }
-    if (_passwordController.text.isEmpty ||
-        _confirmPasswordController.text.isEmpty) {
-      _showSnack('Please enter and confirm the password',
-          backgroundColor: Colors.orange);
-      return;
-    }
-    if (_passwordController.text != _confirmPasswordController.text) {
-      _showSnack('Passwords do not match', backgroundColor: Colors.orange);
-      return;
+
+    if (_selectedAlgorithm == 'AES') {
+      if (_passwordController.text.isEmpty ||
+          _confirmPasswordController.text.isEmpty) {
+        _showSnack('Please enter and confirm the password',
+            backgroundColor: Colors.orange);
+        return;
+      }
+      if (_passwordController.text != _confirmPasswordController.text) {
+        _showSnack('Passwords do not match', backgroundColor: Colors.orange);
+        return;
+      }
     }
 
     setState(() => _isDecoding = true);
@@ -226,10 +350,13 @@ class _ImageStegoPageState extends State<ImageStegoPage>
       final args = [
         backendPath,
         'decode-image',
-        '--password', _passwordController.text,
         '--algorithm', _selectedAlgorithm,
         '--input-file', inputPath,
       ];
+
+      if (_selectedAlgorithm == 'AES') {
+        args.addAll(['--password', _passwordController.text]);
+      }
 
       final pythonExec = Platform.isWindows ? 'python' : 'python3';
       appProvider.updateProgress(0.25);
@@ -458,53 +585,11 @@ class _ImageStegoPageState extends State<ImageStegoPage>
               ),
             ),
             const SizedBox(height: 16),
-            Text('Encryption Password',
-                style: isDark
-                    ? CyberTheme.heading3
-                    : CyberTheme.heading3.copyWith(color: Colors.black87)),
-            const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                color: isDark ? CyberTheme.glassWhite : Colors.black.withOpacity(0.03),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TextField(
-                controller: _passwordController,
-                obscureText: true,
-                style: CyberTheme.bodyMedium.copyWith(
-                    color: isDark ? Colors.white : Colors.black87),
-                decoration: InputDecoration(
-                  hintText: 'Enter strong password',
-                  hintStyle: CyberTheme.bodyMedium.copyWith(
-                    color: isDark ? CyberTheme.softGray : Colors.black45,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.all(16),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: isDark ? CyberTheme.glassWhite : Colors.black.withOpacity(0.03),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TextField(
-                controller: _confirmPasswordController,
-                obscureText: true,
-                style: CyberTheme.bodyMedium.copyWith(
-                    color: isDark ? Colors.white : Colors.black87),
-                decoration: InputDecoration(
-                  hintText: 'Confirm password',
-                  hintStyle: CyberTheme.bodyMedium.copyWith(
-                    color: isDark ? CyberTheme.softGray : Colors.black45,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.all(16),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
+            if (_selectedAlgorithm == 'AES')
+              _buildAesPasswordSection(isDark)
+            else
+              _buildRsaKeyManagementSection(),
+            const SizedBox(height: 24),
             LayoutBuilder(
               builder: (context, constraints) {
                 final bool wide = constraints.maxWidth >= 480;
@@ -558,6 +643,97 @@ class _ImageStegoPageState extends State<ImageStegoPage>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAesPasswordSection(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Encryption Password',
+            style: isDark
+                ? CyberTheme.heading3
+                : CyberTheme.heading3.copyWith(color: Colors.black87)),
+        const SizedBox(height: 8),
+        Container(
+                decoration: BoxDecoration(
+                  color: isDark ? CyberTheme.glassWhite : Colors.black.withOpacity(0.03),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  style: CyberTheme.bodyMedium.copyWith(
+                      color: isDark ? Colors.white : Colors.black87),
+                  decoration: InputDecoration(
+                    hintText: 'Enter strong password',
+                    hintStyle: CyberTheme.bodyMedium.copyWith(
+                      color: isDark ? CyberTheme.softGray : Colors.black45,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                ),
+              ),
+        const SizedBox(height: 12),
+        Container(
+                decoration: BoxDecoration(
+                  color: isDark ? CyberTheme.glassWhite : Colors.black.withOpacity(0.03),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: TextField(
+                  controller: _confirmPasswordController,
+                  obscureText: true,
+                  style: CyberTheme.bodyMedium.copyWith(
+                      color: isDark ? Colors.white : Colors.black87),
+                  decoration: InputDecoration(
+                    hintText: 'Confirm password',
+                    hintStyle: CyberTheme.bodyMedium.copyWith(
+                      color: isDark ? CyberTheme.softGray : Colors.black45,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.all(16),
+                  ),
+                ),
+              ),
+      ],
+    );
+  }
+
+  Widget _buildRsaKeyManagementSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('RSA Key Management', style: CyberTheme.heading3),
+        const SizedBox(height: 16),
+        Center(
+          child: CyberButton(
+            text: 'Generate Key Pair',
+            icon: Icons.vpn_key_outlined,
+            onPressed: _generateKeyPair,
+            isLoading: _isGeneratingKeys,
+            variant: CyberButtonVariant.outline,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children:[
+            CyberButton(
+              text: 'Import Key Pair',
+              icon: Icons.file_upload_outlined,
+              onPressed: _importKeyPair,
+              isLoading: _isImportingKeys,
+            ),
+            const SizedBox(width: 16),
+            CyberButton(
+              text: 'Export Key Pair',
+              icon: Icons.file_download_outlined,
+              onPressed: _exportKeyPair,
+              isLoading: _isExportingKeys,
+            ),
+          ]
+        )
+      ],
     );
   }
 
@@ -690,6 +866,8 @@ class _ImageStegoPageState extends State<ImageStegoPage>
           Expanded(
             flex: 3,
             child: Column(
+
+
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Decoded Data',
@@ -820,7 +998,11 @@ class _ImageStegoPageState extends State<ImageStegoPage>
                         );
 
                         if (outputPath != null) {
-                          final file = File(outputPath);
+                          var finalPath = outputPath;
+                          if (!finalPath.toLowerCase().endsWith('.png')) {
+                            finalPath += '.png';
+                          }
+                          final file = File(finalPath);
                           await file.writeAsBytes(_encodedImageBytes!);
                           
                           ScaffoldMessenger.of(context).showSnackBar(

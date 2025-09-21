@@ -25,6 +25,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   late Animation<double> _opacityAnimation;
   late Animation<double> _scaleAnimation;
   List<Map<String, dynamic>> _recentLogs = [];
+  int _totalOperations = 0;
+  int _filesProcessed = 0;
   bool _isLoadingLogs = true;
 
   @override
@@ -65,14 +67,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     try {
       final backendPath = await getBackendPath();
       final pythonExec = Platform.isWindows ? 'python' : 'python3';
-      final result = await Process.run(pythonExec, [backendPath, 'get-logs']);
+      final result = await Process.run(pythonExec, [backendPath, 'get-log-stats']);
 
       if (result.exitCode == 0) {
         final output = jsonDecode(result.stdout);
-        if (output['status'] == 'success' && output['logs'] is List) {
+        if (output['status'] == 'success' && output['stats'] is Map) {
           if (!mounted) return;
           setState(() {
-            _recentLogs = List<Map<String, dynamic>>.from(output['logs']);
+            _recentLogs = List<Map<String, dynamic>>.from(output['stats']['recent_logs']);
+            _totalOperations = output['stats']['total_operations'];
+            _filesProcessed = output['stats']['files_processed'];
           });
         }
       }
@@ -153,14 +157,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         _buildStatCard(
           context,
           'Total Operations',
-          _recentLogs.length.toString(),
+          _totalOperations.toString(),
           Icons.analytics_outlined,
           CyberTheme.cyberPurple,
         ),
         _buildStatCard(
           context,
           'Files Processed',
-          '',
+          _filesProcessed.toString(),
           Icons.folder_outlined,
           CyberTheme.aquaBlue,
         ),
@@ -251,18 +255,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               },
               variant: CyberButtonVariant.secondary,
             ),
-            const SizedBox(width: 16),
-            CyberButton(
-              text: 'Detect Stego',
-              icon: Icons.search_outlined,
-              onPressed: () {
-                Provider.of<AppProvider>(
-                  context,
-                  listen: false,
-                ).setCurrentPage('detector');
-              },
-              variant: CyberButtonVariant.outline,
-            ),
+            // const SizedBox(width: 16),
+            // CyberButton(
+            //   text: 'Detect Stego',
+            //   icon: Icons.search_outlined,
+            //   onPressed: () {
+            //     Provider.of<AppProvider>(
+            //       context,
+            //       listen: false,
+            //     ).setCurrentPage('detector');
+            //   },
+            //   variant: CyberButtonVariant.outline,
+            // ),
           ],
         ),
       ],
@@ -290,13 +294,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                         itemCount: _recentLogs.length,
                         itemBuilder: (context, index) {
                           final log = _recentLogs.reversed.toList()[index];
-                          return _buildActivityItem(
-                            context,
-                            log['operation'] ?? 'Unknown',
-                            log['timestamp'] ?? '',
-                            _getIconForOperation(log['operation']),
-                            _getColorForStatus(log['status']),
-                          );
+                          return _buildActivityItem(context, log);
                         },
                       ),
           ),
@@ -337,51 +335,131 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
   }
 
-  Widget _buildActivityItem(
-    BuildContext context,
-    String title,
-    String time,
-    IconData icon,
-    Color color,
-  ) {
+  void _showLogDetailsDialog(Map<String, dynamic> log) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? CyberTheme.glassWhite : Colors.black.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: 12),
-          Expanded(
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: isDark ? const Color(0xFF1E1E2A) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: CyberTheme.softGray.withOpacity(0.3)),
+          ),
+          title: Text(
+            'Log Details',
+            style: isDark
+                ? CyberTheme.heading2
+                : CyberTheme.heading2.copyWith(color: Colors.black87),
+          ),
+          content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  title,
-                  style: isDark
-                      ? CyberTheme.bodyMedium.copyWith(color: Colors.white)
-                      : const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black87,
-                          height: 1.5,
-                        ),
-                ),
-                Text(
-                  time,
-                  style: isDark
-                      ? CyberTheme.bodySmall
-                      : CyberTheme.bodySmall.copyWith(color: Colors.black45),
-                ),
+                _buildDetailRow('Operation:', log['operation'] ?? 'N/A'),
+                _buildDetailRow('Status:', log['status'] ?? 'N/A'),
+                _buildDetailRow('Timestamp:', log['timestamp'] ?? 'N/A'),
+                if (log.containsKey('details'))
+                  ...(log['details'] as Map<String, dynamic>).entries.map(
+                        (e) => _buildDetailRow(
+                            '${e.key[0].toUpperCase()}${e.key.substring(1)}:',
+                            e.value?.toString() ?? 'N/A'),
+                      ),
               ],
             ),
           ),
-        ],
+          actions: [
+            CyberButton(
+              text: 'Close',
+              onPressed: () => Navigator.of(context).pop(),
+              variant: CyberButtonVariant.primary,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: RichText(
+        text: TextSpan(
+          style: isDark
+              ? CyberTheme.bodyMedium
+              : CyberTheme.bodyMedium.copyWith(color: Colors.black87),
+          children: [
+            TextSpan(
+              text: '$label ',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActivityItem(BuildContext context, Map<String, dynamic> log) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final title = log['operation'] ?? 'Unknown';
+    final time = log['timestamp'] ?? '';
+    final icon = _getIconForOperation(log['operation']);
+    final color = _getColorForStatus(log['status']);
+    final details = log['details'] as Map<String, dynamic>?;
+    final filename = details?['filename'] as String?;
+
+    return GestureDetector(
+      onTap: () => _showLogDetailsDialog(log),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color:
+              isDark ? CyberTheme.glassWhite : Colors.black.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: isDark
+                        ? CyberTheme.bodyMedium.copyWith(color: Colors.white)
+                        : const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black87,
+                            height: 1.5,
+                          ),
+                  ),
+                  if (filename != null)
+                    Text(
+                      filename,
+                      style: isDark
+                          ? CyberTheme.bodySmall
+                          : CyberTheme.bodySmall
+                              .copyWith(color: Colors.black54),
+                    ),
+                  Text(
+                    time,
+                    style: isDark
+                        ? CyberTheme.bodySmall
+                        : CyberTheme.bodySmall.copyWith(color: Colors.black45),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

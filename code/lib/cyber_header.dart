@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'cyber_theme.dart';
 import 'app_provider.dart';
 import 'cyber_widgets.dart';
+import 'notifications_panel.dart';
 
 class CyberHeader extends StatefulWidget {
   const CyberHeader({super.key});
@@ -71,7 +72,13 @@ class _CyberHeaderState extends State<CyberHeader>
             _buildQuickActionButton(
               icon: Icons.notifications_outlined,
               badgeCount: 3,
-              onPressed: () {},
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => const NotificationsPanel(),
+                );
+              },
             ),
 
             const SizedBox(width: 8),

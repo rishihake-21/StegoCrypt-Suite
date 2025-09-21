@@ -12,7 +12,7 @@ import 'video_stego_page.dart';
 import 'text_stego_page.dart';
 import 'encrypt_page.dart';
 import 'decrypt_page.dart';
-import 'detector_page.dart';
+import 'hashing_page.dart';
 import 'about_page.dart';
 
 class MainLayout extends StatefulWidget {
@@ -140,23 +140,23 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
   Widget _getPageWidget(String page) {
     switch (page) {
-      case 'home':
+      case '/':
         return const HomePage();
-      case 'image-stego':
+      case '/image-steganography':
         return const ImageStegoPage();
-      case 'audio-stego':
+      case '/audio-steganography':
         return const AudioStegoPage();
-      case 'video-stego':
+      case '/video-steganography':
         return const VideoStegoPage();
-      case 'text-stego':
+      case '/text-steganography':
         return const TextStegoPage();
-      case 'encrypt':
+      case '/encrypt':
         return const EncryptPage();
-      case 'decrypt':
+      case '/decrypt':
         return const DecryptPage();
-      case 'detector':
-        return const DetectorPage();
-      case 'about':
+      case '/hashing':
+        return const HashingPage();
+      case '/about':
         return const AboutPage();
       default:
         return const HomePage();

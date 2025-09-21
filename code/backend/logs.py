@@ -31,7 +31,7 @@ def log_operation(operation: str, status: str, details: dict = None):
     }
     logger.info(json.dumps(log_entry))
 
-def get_logs(count: int = 15) -> list:
+def get_logs(count: int = 20) -> list:
     """Get recent logs in a structured format."""
     try:
         with open(LOG_FILE, 'r') as f:
@@ -51,6 +51,42 @@ def get_logs(count: int = 15) -> list:
         return []
     except Exception:
         return []
+
+def get_log_stats() -> dict:
+    """Get statistics from all logs."""
+    if not os.path.exists(LOG_FILE):
+        return {
+            "total_operations": 0,
+            "files_processed": 0,
+            "recent_logs": [],
+        }
+    
+    log_entries = []
+    try:
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    if line.strip():
+                        log_entries.append(json.loads(line.strip()))
+                except json.JSONDecodeError:
+                    # Optionally log this error to a separate file for debugging
+                    continue
+    except Exception:
+        # Handle file reading errors
+        return {
+            "total_operations": 0,
+            "files_processed": 0,
+            "recent_logs": [],
+        }
+
+    total_operations = len(log_entries)
+    files_processed = sum(1 for log in log_entries if log.get("details", {}).get("filename"))
+    
+    return {
+        "total_operations": total_operations,
+        "files_processed": files_processed,
+        "recent_logs": log_entries[-20:],
+    }
 
 def clear_logs():
     """Clear all logs"""
