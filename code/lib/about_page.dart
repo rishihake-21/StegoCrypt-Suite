@@ -34,11 +34,17 @@ class AboutPage extends StatelessWidget {
                         Container(
                           width: 60,
                           height: 60,
-                          decoration: CyberTheme.glowingContainer,
-                          child: const Icon(
-                            Icons.security,
-                            size: 32,
-                            color: Colors.white,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: ClipOval(
+                              child: Image.asset("assets/logo/sc2.jpg",
+                                fit: BoxFit.cover,
+                                width: 100,
+                                height: 100,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),

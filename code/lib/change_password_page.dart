@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,23 +17,16 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
       TextEditingController();
   String? _errorText;
 
-  Future<String> _hashPassword(String password) async {
-    final result = await Process.run(
-      'python',
-      ['code/backend/stegocrypt_cli.py', 'hash', '--message', password],
-    );
-    if (result.exitCode == 0) {
-      final jsonResponse = jsonDecode(result.stdout);
-      return jsonResponse['hash'];
-    } else {
-      throw Exception('Failed to hash password');
-    }
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password.trim());
+    final digest = sha256.convert(bytes);
+    return digest.toString();
   }
 
   Future<void> _changePassword() async {
     final prefs = await SharedPreferences.getInstance();
     final savedPassword = prefs.getString('password');
-    final oldPasswordHash = await _hashPassword(_oldPasswordController.text);
+    final oldPasswordHash = _hashPassword(_oldPasswordController.text.trim());
     if (savedPassword != oldPasswordHash) {
       setState(() {
         _errorText = 'Incorrect old password';
@@ -52,7 +45,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
       });
       return;
     }
-    final newPasswordHash = await _hashPassword(_newPasswordController.text);
+    final newPasswordHash = _hashPassword(_newPasswordController.text);
     await prefs.setString('password', newPasswordHash);
     Navigator.pop(context);
   }

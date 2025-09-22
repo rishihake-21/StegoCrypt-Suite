@@ -23,6 +23,7 @@ class AppProvider with ChangeNotifier {
   Map<String, dynamic> get userSettings => _userSettings;
   ThemeMode get themeMode => _themeMode;
   bool get isDarkMode => _themeMode == ThemeMode.dark;
+  // notification/unread state removed
 
   void setCurrentPage(String page) {
     _currentPage = page;

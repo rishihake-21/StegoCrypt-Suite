@@ -204,7 +204,7 @@ class _CyberSidebarState extends State<CyberSidebar>
     List<NavItem> items,
     AppProvider appProvider,
   ) {
-    final bool isExpandable = items.length > 1;
+    final bool isExpandable = items.length > 5;
     final bool isExpanded = _expandedGroup == groupId;
 
     return Container(

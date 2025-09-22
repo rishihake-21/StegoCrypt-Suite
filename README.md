@@ -178,7 +178,6 @@ Below is the repository tree (based on the attached folder listings). Paths are 
 │   │   ├── image_stego_page.dart
 │   │   ├── main_layout.dart
 │   │   ├── main.dart
-│   │   ├── notifications_panel.dart
 │   │   ├── text_stego_page.dart
 │   │   └── video_stego_page.dart
 │   ├── linux/

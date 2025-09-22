@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'cyber_theme.dart';
 import 'app_provider.dart';
 import 'cyber_widgets.dart';
-import 'notifications_panel.dart';
+// notifications removed
 
 class CyberHeader extends StatefulWidget {
   const CyberHeader({super.key});
@@ -39,8 +39,8 @@ class _CyberHeaderState extends State<CyberHeader>
 
   @override
   Widget build(BuildContext context) {
-    final appProvider = Provider.of<AppProvider>(context);
-    final bool isDarkMode = appProvider.isDarkMode;
+  final appProvider = Provider.of<AppProvider>(context);
+  final bool isDarkMode = appProvider.isDarkMode;
 
     return Container(
       height: 80,
@@ -69,17 +69,7 @@ class _CyberHeaderState extends State<CyberHeader>
 
             const SizedBox(width: 16),
 
-            _buildQuickActionButton(
-              icon: Icons.notifications_outlined,
-              badgeCount: 3,
-              onPressed: () {
-                showModalBottomSheet(
-                  context: context,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => const NotificationsPanel(),
-                );
-              },
-            ),
+            // Notifications removed
 
             const SizedBox(width: 8),
 

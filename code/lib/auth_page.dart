@@ -32,7 +32,7 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   String _hashPassword(String password) {
-    final bytes = utf8.encode(password);
+    final bytes = utf8.encode(password.trim());
     final digest = sha256.convert(bytes);
     return digest.toString();
   }
@@ -44,7 +44,7 @@ class _AuthPageState extends State<AuthPage> {
       });
       return;
     }
-    final hashedPassword = _hashPassword(_passwordController.text);
+    final hashedPassword = _hashPassword(_passwordController.text.trim());
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('password', hashedPassword);
     Navigator.pushReplacement(
