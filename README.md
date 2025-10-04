@@ -109,9 +109,6 @@ Below is the repository tree (based on the attached folder listings). Paths are 
 │   ├── .dart_tool/             # collapsed
 │   ├── .idea/                  # collapsed
 │   ├── android/
-│   │   ├── build.gradle.kts
-│   │   ├── gradlew
-│   │   └── gradlew.bat
 │   ├── app/
 │   │   └── build.gradle.kts
 │   ├── assets/
